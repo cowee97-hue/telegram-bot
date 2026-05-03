@@ -141,3 +141,32 @@ def is_admin_db(user_id: int):
         "SELECT 1 FROM admins WHERE user_id=?",
         (user_id,)
     ).fetchone() is not None
+    def add_admin(user_id):
+    cursor.execute(
+        "INSERT OR IGNORE INTO admins VALUES (?)",
+        (user_id,)
+    )
+    conn.commit()
+
+
+def is_admin(user_id):
+    return cursor.execute(
+        "SELECT 1 FROM admins WHERE user_id=?",
+        (user_id,)
+    ).fetchone()
+
+
+def get_top():
+    return cursor.execute("""
+        SELECT username, COUNT(*) as votes
+        FROM votes
+        GROUP BY username
+        ORDER BY votes DESC
+        LIMIT 10
+    """).fetchall()
+    cursor.execute("""
+CREATE TABLE IF NOT EXISTS admins (
+    user_id INTEGER PRIMARY KEY
+)
+""")
+conn.commit()

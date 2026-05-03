@@ -45,10 +45,10 @@ async def check_sub(user_id: int):
 # =========================
 def admin_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Users", callback_data="adm_users")],
-        [InlineKeyboardButton(text="Top", callback_data="adm_top")],
-        [InlineKeyboardButton(text="Stats", callback_data="adm_stats")],
-        [InlineKeyboardButton(text="Clear votes", callback_data="adm_clear")]
+        [InlineKeyboardButton(text="👥 Пользователи", callback_data="adm_users")],
+        [InlineKeyboardButton(text="🏆 Топ", callback_data="adm_top")],
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="adm_stats")],
+        [InlineKeyboardButton(text="🗑 Очистить голоса", callback_data="adm_clear")]
     ])
 
 
@@ -63,24 +63,35 @@ async def start(msg: types.Message):
 
     if not await check_sub(uid):
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Subscribe", url="https://t.me/mativstydio")]
+            [InlineKeyboardButton(text="📢 Подписаться", url="https://t.me/mativstydio")],
+            [InlineKeyboardButton(text="✅ Проверить", callback_data="check_sub")]
         ])
-        await msg.answer("Subscribe to use bot:", reply_markup=kb)
+
+        await msg.answer(
+            "👋 <b>Добро пожаловать!</b>\n\n"
+            "📌 Подпишись на канал, чтобы использовать бота.",
+            parse_mode="HTML",
+            reply_markup=kb
+        )
         return
 
     if not username:
-        await msg.answer("No username")
+        await msg.answer("❌ У тебя нет username в Telegram")
         return
 
     add_user(uid, username)
 
     if username in queue:
-        await msg.answer("Already in queue")
+        await msg.answer("⏳ Ты уже в очереди")
         return
 
     queue.append(username)
-    await msg.answer("Added to queue")
 
+    await msg.answer(f"✅ @{username} добавлен в очередь")
+
+    # =========================
+    # BATTLE
+    # =========================
     if len(queue) >= 2:
         u1 = queue.pop(0)
         u2 = queue.pop(0)
@@ -89,16 +100,22 @@ async def start(msg: types.Message):
 
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="Player 1", callback_data=f"vote_{battle_id}_1"),
-                InlineKeyboardButton(text="Player 2", callback_data=f"vote_{battle_id}_2")
+                InlineKeyboardButton(text=f"🔥 @{u1}", callback_data=f"vote_{battle_id}_1"),
+                InlineKeyboardButton(text=f"⚔️ @{u2}", callback_data=f"vote_{battle_id}_2")
             ]
         ])
 
-        await msg.answer("BATTLE STARTED", reply_markup=kb)
+        await msg.answer(
+            f"🔥 <b>БИТВА НАЧАЛАСЬ!</b>\n\n"
+            f"⚔️ @{u1} VS @{u2}\n\n"
+            "🗳 Голосуй за лучшего!",
+            parse_mode="HTML",
+            reply_markup=kb
+        )
 
 
 # =========================
-# VOTE
+# VOTE SYSTEM
 # =========================
 @dp.callback_query(F.data.startswith("vote_"))
 async def vote(call: types.CallbackQuery):
@@ -109,27 +126,43 @@ async def vote(call: types.CallbackQuery):
     battle_id = int(battle_id)
 
     if has_voted(battle_id, uid):
-        await call.answer("Already voted")
+        await call.answer("❌ Ты уже голосовал за эту битву", show_alert=True)
         return
 
     username = call.from_user.username or "unknown"
 
-    add_vote(battle_id, uid, option + ":" + username)
+    add_vote(battle_id, uid, f"{option}:{username}")
 
-    await call.answer("Vote counted")
+    await call.answer("✅ Голос засчитан")
 
 
 # =========================
-# ADMIN
+# CHECK SUB BUTTON
+# =========================
+@dp.callback_query(F.data == "check_sub")
+async def check(call: types.CallbackQuery):
+
+    if await check_sub(call.from_user.id):
+        await call.message.edit_text("✅ Подписка подтверждена!")
+    else:
+        await call.answer("❌ Ты не подписан", show_alert=True)
+
+
+# =========================
+# ADMIN PANEL
 # =========================
 @dp.message(F.text == "/admin")
 async def admin(msg: types.Message):
 
     if msg.from_user.id not in admins:
-        await msg.answer("No access")
+        await msg.answer("❌ Нет доступа")
         return
 
-    await msg.answer("Admin panel", reply_markup=admin_kb())
+    await msg.answer(
+        "👑 <b>АДМИН ПАНЕЛЬ</b>\n\nВыбери действие:",
+        parse_mode="HTML",
+        reply_markup=admin_kb()
+    )
 
 
 # =========================
@@ -140,12 +173,12 @@ async def users(call: types.CallbackQuery):
 
     data = cursor.execute("SELECT user_id, username FROM users").fetchall()
 
-    text = "USERS:\n\n"
+    text = "👥 <b>ПОЛЬЗОВАТЕЛИ</b>\n\n"
 
     for u in data[:30]:
         text += str(u[0]) + " | @" + str(u[1]) + "\n"
 
-    await call.message.edit_text(text, reply_markup=admin_kb())
+    await call.message.edit_text(text, parse_mode="HTML", reply_markup=admin_kb())
 
 
 # =========================
@@ -156,12 +189,12 @@ async def top(call: types.CallbackQuery):
 
     data = get_top()
 
-    text = "TOP:\n\n"
+    text = "🏆 <b>ТОП</b>\n\n"
 
     for i, u in enumerate(data, 1):
-        text += str(i) + ". @" + str(u[0]) + " - " + str(u[1]) + "\n"
+        text += str(i) + ". @" + str(u[0]) + " — " + str(u[1]) + "\n"
 
-    await call.message.edit_text(text, reply_markup=admin_kb())
+    await call.message.edit_text(text, parse_mode="HTML", reply_markup=admin_kb())
 
 
 # =========================
@@ -174,13 +207,18 @@ async def stats(call: types.CallbackQuery):
     battles = cursor.execute("SELECT COUNT(*) FROM battles").fetchone()[0]
     votes = cursor.execute("SELECT COUNT(*) FROM votes").fetchone()[0]
 
-    text = "STATS:\n\nUsers: " + str(users) + "\nBattles: " + str(battles) + "\nVotes: " + str(votes)
+    text = (
+        "📊 <b>СТАТИСТИКА</b>\n\n"
+        "👥 Пользователи: " + str(users) + "\n"
+        "⚔️ Битвы: " + str(battles) + "\n"
+        "🗳 Голоса: " + str(votes)
+    )
 
-    await call.message.edit_text(text, reply_markup=admin_kb())
+    await call.message.edit_text(text, parse_mode="HTML", reply_markup=admin_kb())
 
 
 # =========================
-# CLEAR
+# CLEAR VOTES
 # =========================
 @dp.callback_query(F.data == "adm_clear")
 async def clear(call: types.CallbackQuery):
@@ -188,8 +226,8 @@ async def clear(call: types.CallbackQuery):
     cursor.execute("DELETE FROM votes")
     conn.commit()
 
-    await call.answer("Cleared")
-    await call.message.edit_text("Votes cleared", reply_markup=admin_kb())
+    await call.answer("Очищено")
+    await call.message.edit_text("🗑 Голоса очищены", reply_markup=admin_kb())
 
 
 # =========================

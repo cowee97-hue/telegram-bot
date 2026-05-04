@@ -28,7 +28,7 @@ def new_battle(u1, u2):
 
 
 # =========================
-# /BATTLE (LIST FOR USERS)
+# /BATTLE (для юзеров)
 # =========================
 @dp.message(F.text == "/battle")
 async def battle_list(msg: types.Message):
@@ -82,7 +82,7 @@ async def open_battle(call: types.CallbackQuery):
 
 
 # =========================
-# VOTE
+# VOTE SYSTEM
 # =========================
 @dp.callback_query(F.data.startswith("vote_"))
 async def vote(call: types.CallbackQuery):
@@ -109,8 +109,57 @@ async def admin(msg: types.Message):
         await msg.answer("❌ Нет доступа")
         return
 
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 Список битв", callback_data="list_battles")],
+        [InlineKeyboardButton(text="🛑 Завершить битву", callback_data="end_menu")]
+    ])
+
+    await msg.answer("👑 <b>Админ панель</b>", reply_markup=kb, parse_mode="HTML")
+
+
+# =========================
+# LIST BATTLES (ADMIN)
+# =========================
+@dp.callback_query(F.data == "list_battles")
+async def list_battles(call: types.CallbackQuery):
+
+    if call.from_user.id not in admins:
+        await call.answer("❌ Нет доступа")
+        return
+
     if not battles:
-        await msg.answer("❌ Нет активных битв")
+        await call.message.answer("❌ Нет активных битв")
+        return
+
+    kb = []
+
+    for bid, d in battles.items():
+        kb.append([
+            InlineKeyboardButton(
+                text=f"⚔️ @{d['u1']} vs @{d['u2']}",
+                callback_data=f"open_{bid}"
+            )
+        ])
+
+    await call.message.answer(
+        "📋 <b>Активные битвы:</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
+        parse_mode="HTML"
+    )
+
+
+# =========================
+# END MENU
+# =========================
+@dp.callback_query(F.data == "end_menu")
+async def end_menu(call: types.CallbackQuery):
+
+    if call.from_user.id not in admins:
+        await call.answer("❌ Нет доступа")
+        return
+
+    if not battles:
+        await call.message.answer("❌ Нет активных битв")
         return
 
     kb = []
@@ -123,8 +172,8 @@ async def admin(msg: types.Message):
             )
         ])
 
-    await msg.answer(
-        "👑 <b>Выбери битву:</b>",
+    await call.message.answer(
+        "🛑 <b>Выбери битву:</b>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
         parse_mode="HTML"
     )
@@ -149,12 +198,7 @@ async def select_end(call: types.CallbackQuery):
         return
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="🔥 ЗАВЕРШИТЬ",
-                callback_data=f"end_{bid}"
-            )
-        ]
+        [InlineKeyboardButton(text="🔥 ЗАВЕРШИТЬ", callback_data=f"end_{bid}")]
     ])
 
     await call.message.answer(
@@ -227,7 +271,7 @@ async def setadm(msg: types.Message):
 
         await msg.answer(f"✅ Админ добавлен: {new_id}")
     except:
-        await msg.answer("❌ Используй: /setadm ID")
+        await msg.answer("❌ /setadm ID")
 
 
 # =========================

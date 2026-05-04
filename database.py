@@ -1,24 +1,13 @@
 import sqlite3
 
-# =========================
-# 📦 CONNECT DATABASE
-# =========================
-conn = sqlite3.connect("bot.db", check_same_thread=False)
+conn = sqlite3.connect("db.db")
 cursor = conn.cursor()
 
-# =========================
-# 👤 USERS TABLE
-# =========================
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY,
-    username TEXT
-)
-""")
 
 # =========================
-# ⚔️ BATTLES TABLE
+# TABLES
 # =========================
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS battles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,20 +16,15 @@ CREATE TABLE IF NOT EXISTS battles (
 )
 """)
 
-# =========================
-# 🗳️ VOTES TABLE
-# =========================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS votes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     battle_id INTEGER,
     user_id INTEGER,
-    username TEXT
+    vote TEXT
 )
 """)
 
-# =========================
-# 👑 ADMINS TABLE
-# =========================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS admins (
     user_id INTEGER PRIMARY KEY
@@ -49,18 +33,9 @@ CREATE TABLE IF NOT EXISTS admins (
 
 conn.commit()
 
-# =========================
-# 👤 USERS
-# =========================
-def add_user(user_id, username):
-    cursor.execute(
-        "INSERT OR IGNORE INTO users VALUES (?, ?)",
-        (user_id, username)
-    )
-    conn.commit()
 
 # =========================
-# ⚔️ BATTLES
+# BATTLES
 # =========================
 def create_battle(u1, u2):
     cursor.execute(
@@ -70,48 +45,49 @@ def create_battle(u1, u2):
     conn.commit()
     return cursor.lastrowid
 
+
 # =========================
-# 🗳️ VOTES
+# VOTES
 # =========================
-def add_vote(battle_id, user_id, username):
+def add_vote(battle_id, user_id, vote):
+
     cursor.execute(
-        "INSERT INTO votes VALUES (?, ?, ?)",
-        (battle_id, user_id, username)
+        "INSERT INTO votes (battle_id, user_id, vote) VALUES (?, ?, ?)",
+        (battle_id, user_id, vote)
     )
+
     conn.commit()
 
 
 def has_voted(battle_id, user_id):
-    return cursor.execute(
-        "SELECT 1 FROM votes WHERE battle_id=? AND user_id=?",
+
+    row = cursor.execute(
+        "SELECT 1 FROM votes WHERE battle_id = ? AND user_id = ?",
         (battle_id, user_id)
-    ).fetchone() is not None
+    ).fetchone()
+
+    return row is not None
+
 
 # =========================
-# 👑 ADMINS
+# ADMINS
 # =========================
 def add_admin(user_id):
     cursor.execute(
-        "INSERT OR IGNORE INTO admins VALUES (?)",
+        "INSERT OR IGNORE INTO admins (user_id) VALUES (?)",
         (user_id,)
     )
     conn.commit()
 
 
-def is_admin(user_id):
-    return cursor.execute(
-        "SELECT 1 FROM admins WHERE user_id=?",
+def remove_admin(user_id):
+    cursor.execute(
+        "DELETE FROM admins WHERE user_id = ?",
         (user_id,)
-    ).fetchone() is not None
+    )
+    conn.commit()
 
-# =========================
-# 🏆 TOP USERS
-# =========================
-def get_top():
-    return cursor.execute("""
-        SELECT username, COUNT(*) as votes
-        FROM votes
-        GROUP BY username
-        ORDER BY votes DESC
-        LIMIT 10
-    """).fetchall()
+
+def get_admins():
+    rows = cursor.execute("SELECT user_id FROM admins").fetchall()
+    return [r[0] for r in rows]

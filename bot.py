@@ -8,15 +8,32 @@ from database import create_battle, add_vote, has_voted, cursor
 
 TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = 6287356721
+CHANNEL = "@mativstydio"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 admins = {OWNER_ID}
-
 queue = []
+battles = {}
 
-battles = {}  # {id: {"u1": "", "u2": ""}}
+
+# =========================
+# CHECK SUB
+# =========================
+async def check_sub(user_id: int):
+    try:
+        member = await bot.get_chat_member(CHANNEL, user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except:
+        return False
+
+
+def sub_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 Подписаться", url="https://t.me/mativstydio")],
+        [InlineKeyboardButton(text="✅ Я подписался", callback_data="check_sub")]
+    ])
 
 
 # =========================
@@ -34,12 +51,31 @@ def new_battle(u1, u2):
 @dp.message(F.text == "/start")
 async def start(msg: types.Message):
 
+    if not await check_sub(msg.from_user.id):
+        await msg.answer(
+            "❗ Подпишись на канал чтобы пользоваться ботом",
+            reply_markup=sub_kb()
+        )
+        return
+
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🧑‍🤝‍🧑 Участвовать", callback_data="join_queue")],
         [InlineKeyboardButton(text="🗳 Голосовать", callback_data="vote_menu")]
     ])
 
     await msg.answer("👋 Выбери действие:", reply_markup=kb)
+
+
+# =========================
+# CHECK SUB BUTTON
+# =========================
+@dp.callback_query(F.data == "check_sub")
+async def check_subscription(call: types.CallbackQuery):
+
+    if await check_sub(call.from_user.id):
+        await call.message.edit_text("✅ Подписка подтверждена!")
+    else:
+        await call.answer("❌ Ты не подписался", show_alert=True)
 
 
 # =========================
@@ -59,18 +95,41 @@ async def join_queue(call: types.CallbackQuery):
         return
 
     queue.append(user)
-
     await call.message.answer(f"✅ @{user} добавлен в очередь")
+
+    # авто создание битвы
+    if len(queue) >= 2:
+        u1 = queue.pop(0)
+        u2 = queue.pop(0)
+
+        bid = new_battle(u1, u2)
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text=f"🔥 @{u1}", callback_data=f"vote_{bid}_1"),
+                InlineKeyboardButton(text=f"⚔️ @{u2}", callback_data=f"vote_{bid}_2")
+            ]
+        ])
+
+        # в чат
+        await call.message.answer(f"🔥 БИТВА!\n@{u1} ⚔️ @{u2}", reply_markup=kb)
+
+        # В КАНАЛ
+        await bot.send_message(
+            chat_id=CHANNEL,
+            text=f"🔥 НОВАЯ БИТВА!\n\n@{u1} ⚔️ @{u2}",
+            reply_markup=kb
+        )
 
 
 # =========================
-# VOTE MENU (LIST BATTLES)
+# VOTE MENU
 # =========================
 @dp.callback_query(F.data == "vote_menu")
 async def vote_menu(call: types.CallbackQuery):
 
     if not battles:
-        await call.message.answer("❌ Нет активных битв")
+        await call.message.answer("❌ Нет битв")
         return
 
     kb = []
@@ -90,13 +149,12 @@ async def vote_menu(call: types.CallbackQuery):
 
 
 # =========================
-# OPEN VOTE BATTLE
+# OPEN VOTE
 # =========================
 @dp.callback_query(F.data.startswith("vote_open_"))
 async def vote_open(call: types.CallbackQuery):
 
     bid = int(call.data.split("_")[2])
-
     d = battles.get(bid)
 
     if not d:
@@ -111,7 +169,7 @@ async def vote_open(call: types.CallbackQuery):
     ])
 
     await call.message.answer(
-        f"⚔️ @{d['u1']} vs @{d['u2']}\nВыбери голос:",
+        f"⚔️ @{d['u1']} vs @{d['u2']}",
         reply_markup=kb
     )
 
@@ -122,6 +180,10 @@ async def vote_open(call: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("vote_"))
 async def vote(call: types.CallbackQuery):
 
+    if not await check_sub(call.from_user.id):
+        await call.answer("❌ Подпишись на канал", show_alert=True)
+        return
+
     _, bid, opt = call.data.split("_")
     bid = int(bid)
 
@@ -130,7 +192,6 @@ async def vote(call: types.CallbackQuery):
         return
 
     add_vote(bid, call.from_user.id, opt)
-
     await call.answer("✅ Голос принят")
 
 
@@ -152,7 +213,7 @@ async def admin(msg: types.Message):
         [InlineKeyboardButton(text="🧹 Удалить голоса", callback_data="delete_votes_menu")]
     ])
 
-    await msg.answer("👑 <b>Админ панель</b>", reply_markup=kb, parse_mode="HTML")
+    await msg.answer("👑 Админ панель", reply_markup=kb)
 
 
 # =========================
@@ -166,7 +227,6 @@ async def list_battles(call: types.CallbackQuery):
         return
 
     kb = []
-
     for bid, d in battles.items():
         kb.append([
             InlineKeyboardButton(
@@ -192,7 +252,6 @@ async def end_menu(call: types.CallbackQuery):
         return
 
     kb = []
-
     for bid, d in battles.items():
         kb.append([
             InlineKeyboardButton(
@@ -214,12 +273,7 @@ async def end_menu(call: types.CallbackQuery):
 async def select_end(call: types.CallbackQuery):
 
     bid = int(call.data.split("_")[2])
-
     d = battles.get(bid)
-
-    if not d:
-        await call.answer("❌ Нет битвы")
-        return
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔥 ЗАВЕРШИТЬ", callback_data=f"end_{bid}")]
@@ -238,26 +292,15 @@ async def select_end(call: types.CallbackQuery):
 async def end_battle(call: types.CallbackQuery):
 
     bid = int(call.data.split("_")[1])
-
     d = battles.get(bid)
-
-    if not d:
-        await call.answer("❌ Уже завершена")
-        return
 
     stats = cursor.execute(
         "SELECT vote FROM votes WHERE battle_id = ?",
         (bid,)
     ).fetchall()
 
-    p1 = 0
-    p2 = 0
-
-    for v in stats:
-        if str(v[0]).startswith("1"):
-            p1 += 1
-        else:
-            p2 += 1
+    p1 = sum(1 for v in stats if str(v[0]).startswith("1"))
+    p2 = sum(1 for v in stats if str(v[0]).startswith("2"))
 
     u1, u2 = d["u1"], d["u2"]
 
@@ -271,24 +314,7 @@ async def end_battle(call: types.CallbackQuery):
     await call.message.answer("🛑 Битва завершена\n\n" + result)
 
     battles.pop(bid, None)
-
     await call.answer("Готово")
-
-
-# =========================
-# USERS LIST
-# =========================
-@dp.callback_query(F.data == "users_list")
-async def users_list(call: types.CallbackQuery):
-
-    rows = cursor.execute("SELECT DISTINCT user_id FROM votes").fetchall()
-
-    text = "👥 Пользователи:\n\n"
-
-    for r in rows:
-        text += f"{r[0]}\n"
-
-    await call.message.answer(text)
 
 
 # =========================
@@ -306,7 +332,6 @@ async def top_users(call: types.CallbackQuery):
     """).fetchall()
 
     text = "🏆 ТОП:\n\n"
-
     for i, r in enumerate(rows, 1):
         text += f"{i}. {r[0]} — {r[1]}\n"
 
@@ -314,21 +339,18 @@ async def top_users(call: types.CallbackQuery):
 
 
 # =========================
-# SET ADMIN
+# USERS LIST
 # =========================
-@dp.message(F.text.startswith("/setadm"))
-async def setadm(msg: types.Message):
+@dp.callback_query(F.data == "users_list")
+async def users_list(call: types.CallbackQuery):
 
-    if msg.from_user.id != OWNER_ID:
-        await msg.answer("❌ Только Owner")
-        return
+    rows = cursor.execute("SELECT DISTINCT user_id FROM votes").fetchall()
 
-    try:
-        new_id = int(msg.text.split()[1])
-        admins.add(new_id)
-        await msg.answer(f"✅ Админ: {new_id}")
-    except:
-        await msg.answer("❌ /setadm ID")
+    text = "👥 Пользователи:\n\n"
+    for r in rows:
+        text += f"{r[0]}\n"
+
+    await call.message.answer(text)
 
 
 # =========================

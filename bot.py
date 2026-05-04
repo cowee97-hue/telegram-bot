@@ -28,7 +28,7 @@ def new_battle(u1, u2):
 
 
 # =========================
-# /BATTLE (для юзеров)
+# USER BATTLES
 # =========================
 @dp.message(F.text == "/battle")
 async def battle_list(msg: types.Message):
@@ -82,7 +82,7 @@ async def open_battle(call: types.CallbackQuery):
 
 
 # =========================
-# VOTE SYSTEM
+# VOTE
 # =========================
 @dp.callback_query(F.data.startswith("vote_"))
 async def vote(call: types.CallbackQuery):
@@ -111,21 +111,20 @@ async def admin(msg: types.Message):
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Список битв", callback_data="list_battles")],
-        [InlineKeyboardButton(text="🛑 Завершить битву", callback_data="end_menu")]
+        [InlineKeyboardButton(text="🛑 Завершить битву", callback_data="end_menu")],
+        [InlineKeyboardButton(text="👥 Пользователи", callback_data="users_list")],
+        [InlineKeyboardButton(text="🏆 Топ пользователей", callback_data="top_users")],
+        [InlineKeyboardButton(text="🧹 Удалить голоса", callback_data="delete_votes_menu")]
     ])
 
     await msg.answer("👑 <b>Админ панель</b>", reply_markup=kb, parse_mode="HTML")
 
 
 # =========================
-# LIST BATTLES (ADMIN)
+# LIST BATTLES
 # =========================
 @dp.callback_query(F.data == "list_battles")
 async def list_battles(call: types.CallbackQuery):
-
-    if call.from_user.id not in admins:
-        await call.answer("❌ Нет доступа")
-        return
 
     if not battles:
         await call.message.answer("❌ Нет активных битв")
@@ -142,9 +141,8 @@ async def list_battles(call: types.CallbackQuery):
         ])
 
     await call.message.answer(
-        "📋 <b>Активные битвы:</b>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-        parse_mode="HTML"
+        "📋 Активные битвы:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
     )
 
 
@@ -154,12 +152,8 @@ async def list_battles(call: types.CallbackQuery):
 @dp.callback_query(F.data == "end_menu")
 async def end_menu(call: types.CallbackQuery):
 
-    if call.from_user.id not in admins:
-        await call.answer("❌ Нет доступа")
-        return
-
     if not battles:
-        await call.message.answer("❌ Нет активных битв")
+        await call.message.answer("❌ Нет битв")
         return
 
     kb = []
@@ -173,28 +167,23 @@ async def end_menu(call: types.CallbackQuery):
         ])
 
     await call.message.answer(
-        "🛑 <b>Выбери битву:</b>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-        parse_mode="HTML"
+        "🛑 Выбери битву:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
     )
 
 
 # =========================
-# SELECT BATTLE TO END
+# SELECT BATTLE END
 # =========================
 @dp.callback_query(F.data.startswith("select_end_"))
 async def select_end(call: types.CallbackQuery):
 
-    if call.from_user.id not in admins:
-        await call.answer("❌ Нет доступа")
-        return
-
     bid = int(call.data.split("_")[2])
 
-    data = battles.get(bid)
+    d = battles.get(bid)
 
-    if not data:
-        await call.answer("❌ Битва не найдена")
+    if not d:
+        await call.answer("❌ Нет битвы")
         return
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -202,7 +191,7 @@ async def select_end(call: types.CallbackQuery):
     ])
 
     await call.message.answer(
-        f"⚔️ @{data['u1']} vs @{data['u2']}\n\nПодтверди завершение:",
+        f"⚔️ @{d['u1']} vs @{d['u2']}\nПодтверждение:",
         reply_markup=kb
     )
 
@@ -213,15 +202,11 @@ async def select_end(call: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("end_"))
 async def end_battle(call: types.CallbackQuery):
 
-    if call.from_user.id not in admins:
-        await call.answer("❌ Нет доступа")
-        return
-
     bid = int(call.data.split("_")[1])
 
-    data = battles.get(bid)
+    d = battles.get(bid)
 
-    if not data:
+    if not d:
         await call.answer("❌ Уже завершена")
         return
 
@@ -239,7 +224,7 @@ async def end_battle(call: types.CallbackQuery):
         else:
             p2 += 1
 
-    u1, u2 = data["u1"], data["u2"]
+    u1, u2 = d["u1"], d["u2"]
 
     if p1 > p2:
         result = f"🏆 Победил @{u1} ({p1}:{p2})"
@@ -256,13 +241,123 @@ async def end_battle(call: types.CallbackQuery):
 
 
 # =========================
-# SET ADMIN (OWNER ONLY)
+# USERS LIST
+# =========================
+@dp.callback_query(F.data == "users_list")
+async def users_list(call: types.CallbackQuery):
+
+    rows = cursor.execute("SELECT DISTINCT user_id FROM votes").fetchall()
+
+    text = "👥 Пользователи:\n\n"
+
+    for r in rows:
+        text += f"ID: {r[0]}\n"
+
+    await call.message.answer(text or "Нет данных")
+
+
+# =========================
+# TOP USERS
+# =========================
+@dp.callback_query(F.data == "top_users")
+async def top_users(call: types.CallbackQuery):
+
+    rows = cursor.execute("""
+        SELECT user_id, COUNT(*) as c
+        FROM votes
+        GROUP BY user_id
+        ORDER BY c DESC
+        LIMIT 10
+    """).fetchall()
+
+    text = "🏆 ТОП пользователей:\n\n"
+
+    for i, r in enumerate(rows, 1):
+        text += f"{i}. {r[0]} — {r[1]} голосов\n"
+
+    await call.message.answer(text or "Нет данных")
+
+
+# =========================
+# DELETE VOTES MENU
+# =========================
+@dp.callback_query(F.data == "delete_votes_menu")
+async def delete_menu(call: types.CallbackQuery):
+
+    if not battles:
+        await call.message.answer("❌ Нет битв")
+        return
+
+    kb = []
+
+    for bid, d in battles.items():
+        kb.append([
+            InlineKeyboardButton(
+                text=f"⚔️ @{d['u1']} vs @{d['u2']}",
+                callback_data=f"del_select_{bid}"
+            )
+        ])
+
+    await call.message.answer(
+        "🧹 Выбери битву:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
+
+
+# =========================
+# SELECT USER DELETE
+# =========================
+@dp.callback_query(F.data.startswith("del_select_"))
+async def del_select(call: types.CallbackQuery):
+
+    bid = int(call.data.split("_")[2])
+
+    rows = cursor.execute(
+        "SELECT DISTINCT user_id FROM votes WHERE battle_id = ?",
+        (bid,)
+    ).fetchall()
+
+    kb = []
+
+    for r in rows:
+        kb.append([
+            InlineKeyboardButton(
+                text=f"❌ {r[0]}",
+                callback_data=f"del_user_{bid}_{r[0]}"
+            )
+        ])
+
+    await call.message.answer(
+        "👤 Выбери пользователя:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
+
+
+# =========================
+# DELETE USER VOTES
+# =========================
+@dp.callback_query(F.data.startswith("del_user_"))
+async def del_user(call: types.CallbackQuery):
+
+    _, bid, user_id = call.data.split("_")
+
+    cursor.execute(
+        "DELETE FROM votes WHERE battle_id = ? AND user_id = ?",
+        (int(bid), int(user_id))
+    )
+
+    await call.answer("✅ Удалено")
+    await call.message.answer("🧹 Голоса удалены")
+
+
+# =========================
+# SET ADMIN
 # =========================
 @dp.message(F.text.startswith("/setadm"))
 async def setadm(msg: types.Message):
 
     if msg.from_user.id != OWNER_ID:
-        await msg.answer("❌ Только Owner может добавлять админов")
+        await msg.answer("❌ Только Owner")
         return
 
     try:

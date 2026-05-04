@@ -170,8 +170,133 @@ async def vote(call: types.CallbackQuery):
 
 
 # =========================
-# END BATTLE
+# ADMIN PANEL
 # =========================
+@dp.message(F.text == "/admin")
+async def admin(msg: types.Message):
+
+    if not is_admin(msg.from_user.id):
+        await msg.answer("❌ Нет доступа")
+        return
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 Битвы", callback_data="list_battles")],
+        [InlineKeyboardButton(text="🛑 Завершить", callback_data="end_menu")],
+        [InlineKeyboardButton(text="👥 Пользователи", callback_data="users_list")],
+        [InlineKeyboardButton(text="🏆 ТОП", callback_data="top_users")],
+        [InlineKeyboardButton(text="🧹 Очистить голоса", callback_data="delete_votes_menu")]
+    ])
+
+    await msg.answer("👑 Админ панель", reply_markup=kb)
+
+
+# =========================
+# USERS LIST
+# =========================
+@dp.callback_query(F.data == "users_list")
+async def users_list(call: types.CallbackQuery):
+
+    if not is_admin(call.from_user.id):
+        await call.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    rows = cursor.execute("SELECT DISTINCT user_id FROM votes").fetchall()
+
+    if not rows:
+        await call.message.answer("❌ Нет пользователей")
+        return
+
+    text = "👥 Пользователи:\n\n"
+
+    for r in rows:
+        uid = r[0]
+        try:
+            user = await bot.get_chat(uid)
+            if user.username:
+                text += f"@{user.username} ({uid})\n"
+            else:
+                text += f"{user.first_name} ({uid})\n"
+        except:
+            text += f"{uid}\n"
+
+    await call.message.answer(text)
+    await call.answer()
+
+
+# =========================
+# TOP USERS
+# =========================
+@dp.callback_query(F.data == "top_users")
+async def top_users(call: types.CallbackQuery):
+
+    if not is_admin(call.from_user.id):
+        await call.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    rows = cursor.execute("""
+        SELECT vote, COUNT(*) as c
+        FROM votes
+        GROUP BY vote
+        ORDER BY c DESC
+        LIMIT 10
+    """).fetchall()
+
+    if not rows:
+        await call.message.answer("❌ Нет данных")
+        return
+
+    text = "🏆 ТОП:\n\n"
+
+    for i, r in enumerate(rows, 1):
+        text += f"{i}. Вариант {r[0]} — {r[1]} голосов\n"
+
+    await call.message.answer(text)
+    await call.answer()
+
+
+# =========================
+# END MENU
+# =========================
+@dp.callback_query(F.data == "end_menu")
+async def end_menu(call: types.CallbackQuery):
+
+    if not is_admin(call.from_user.id):
+        await call.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    if not battles:
+        await call.message.answer("❌ Нет битв")
+        return
+
+    kb = []
+    for bid, d in battles.items():
+        kb.append([
+            InlineKeyboardButton(
+                text=f"🛑 @{d['u1']} vs @{d['u2']}",
+                callback_data=f"end_select_{bid}"
+            )
+        ])
+
+    await call.message.answer("Выбери битву:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@dp.callback_query(F.data.startswith("end_select_"))
+async def end_select(call: types.CallbackQuery):
+
+    if not is_admin(call.from_user.id):
+        await call.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    bid = int(call.data.split("_")[2])
+    d = battles.get(bid)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔥 Завершить", callback_data=f"end_{bid}")]
+    ])
+
+    await call.message.answer(f"⚔️ @{d['u1']} vs @{d['u2']}", reply_markup=kb)
+
+
 @dp.callback_query(F.data.startswith("end_"))
 async def end_battle(call: types.CallbackQuery):
 
@@ -197,76 +322,10 @@ async def end_battle(call: types.CallbackQuery):
 
     await call.message.answer("🛑 Битва завершена\n\n" + result)
 
-    await bot.send_message(
-        chat_id=CHANNEL,
-        text=f"🏆 РЕЗУЛЬТАТ БИТВЫ:\n\n{result}"
-    )
+    await bot.send_message(CHANNEL, f"🏆 Результат:\n\n{result}")
 
     battles.pop(bid, None)
     await call.answer("Готово")
-
-
-# =========================
-# ADMIN PANEL
-# =========================
-@dp.message(F.text == "/admin")
-async def admin(msg: types.Message):
-
-    if not is_admin(msg.from_user.id):
-        await msg.answer("❌ Нет доступа")
-        return
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Битвы", callback_data="list_battles")],
-        [InlineKeyboardButton(text="🛑 Завершить", callback_data="end_menu")],
-        [InlineKeyboardButton(text="👥 Пользователи", callback_data="users_list")],
-        [InlineKeyboardButton(text="🏆 ТОП", callback_data="top_users")],
-        [InlineKeyboardButton(text="🧹 Очистить голоса", callback_data="delete_votes_menu")]
-    ])
-
-    await msg.answer("👑 Админ панель", reply_markup=kb)
-
-
-# =========================
-# LIST BATTLES
-# =========================
-@dp.callback_query(F.data == "list_battles")
-async def list_battles(call: types.CallbackQuery):
-
-    if not battles:
-        await call.message.answer("❌ Нет битв")
-        return
-
-    text = "📋 Битвы:\n\n"
-    for bid, d in battles.items():
-        text += f"{bid}: @{d['u1']} ⚔️ @{d['u2']}\n"
-
-    await call.message.answer(text)
-
-
-# =========================
-# END MENU
-# =========================
-@dp.callback_query(F.data == "end_menu")
-async def end_menu(call: types.CallbackQuery):
-
-    if not battles:
-        await call.message.answer("❌ Нет битв")
-        return
-
-    kb = []
-    for bid, d in battles.items():
-        kb.append([
-            InlineKeyboardButton(
-                text=f"🛑 @{d['u1']} vs @{d['u2']}",
-                callback_data=f"end_{bid}"
-            )
-        ])
-
-    await call.message.answer(
-        "Выбери битву:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
-    )
 
 
 # =========================
@@ -274,6 +333,10 @@ async def end_menu(call: types.CallbackQuery):
 # =========================
 @dp.callback_query(F.data == "delete_votes_menu")
 async def delete_votes_menu(call: types.CallbackQuery):
+
+    if not is_admin(call.from_user.id):
+        await call.answer("❌ Нет доступа", show_alert=True)
+        return
 
     kb = []
     for bid, d in battles.items():
@@ -336,8 +399,16 @@ async def admins_list(msg: types.Message):
     data = get_admins()
 
     text = "👑 Админы:\n\n"
+
     for uid in data:
-        text += f"{uid}\n"
+        try:
+            user = await bot.get_chat(uid)
+            if user.username:
+                text += f"@{user.username} ({uid})\n"
+            else:
+                text += f"{user.first_name} ({uid})\n"
+        except:
+            text += f"{uid}\n"
 
     await msg.answer(text)
 

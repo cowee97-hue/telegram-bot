@@ -10,7 +10,7 @@ from database import (
 )
 
 TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = 6287356721
+OWNER_ID = 7840407227
 CHANNEL = "@mativstydio"
 
 bot = Bot(token=TOKEN)
